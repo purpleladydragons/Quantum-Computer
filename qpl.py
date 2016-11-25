@@ -1,89 +1,91 @@
 import collections 
 
-def parse(input):
-    FALSE = { "type": "bool", "value": False }
-    # TODO precedence
+FALSE = { "type": "bool", "value": False }
+class Parser:
+    def __init__(self, input):
+        self.input = input
+        # TODO precedence
 
-    def is_punc(ch):
-        token = input.peek()
+    def is_punc(self, ch):
+        token = self.input.peek()
         return token and token['type'] == 'punc' and ( (not ch) or  token['value'] == ch) and token
 
-    def is_kw(kw):
-        token = input.peek()
+    def is_kw(self, kw):
+        token = self.input.peek()
         return token and token['type'] == 'punc' and ( (not kw) or  token['value'] == kw) and token
 
-    def is_op(op):
-        token = input.peek()
+    def is_op(self, op):
+        token = self.input.peek()
         return token and token['type'] == 'punc' and ( (not op) or  token['value'] == op) and token
 
-    def skip_punc(ch):
-        if is_punc(ch):
-            input.next()
+    def skip_punc(self, ch):
+        if self.is_punc(ch):
+            self.input.next()
         else:
-            input.exit("Expecting punctuation: " + ch)
+            self.input.exit("Expecting punctuation: " + ch)
 
-    def skip_kw(kw):
-        if is_kw(kw):
-            input.next()
+    def skip_kw(self, kw):
+        if self.is_kw(kw):
+            self.input.next()
         else:
-            input.exit("Expecting keyword: " + kw)
+            self.input.exit("Expecting keyword: " + kw)
 
-    def skip_op(op):
-        if is_op(op):
-            input.next()
+    def skip_op(self, op):
+        if self.is_op(op):
+            self.input.next()
         else:
-            input.exit("Expecting operator: " + op)
+            self.input.exit("Expecting operator: " + op)
 
-    def unexpected():
-        input.exit("Unexpected token: " + input.peek())
+    def unexpected(self):
+        self.input.exit("Unexpected token: " + input.peek())
 
-    def maybe_binary(left, my_prec):
+    def maybe_binary(self, left, my_prec):
         # TODO pretty sure this is gonna break...
-        token = is_op()
+        token = self.is_op(left)
         if token:
             his_prec = PRECEDENCE[token['value']]
             if his_prec > my_prec:
-                input.next()
-                right = maybe_binary(parse_atom(), his_prec)
+                self.input.next()
+                right = self.maybe_binary(self.parse_atom(), his_prec)
                 binary = { 'type': 'assign' if token['value'] == '=' else 'binary',
                             'operator': token['value'],
                             'left': left,
                             'right': right
                 }
 
-                return maybe_binary(binary, my_prec)
+                return self.maybe_binary(binary, my_prec)
 
         return left
 
-    def delimited(start, stop, separator, parser):
+    def delimited(self, start, stop, separator, parser):
         a = []
         first = True
-        skip_punc(start)
-        while not input.eof():
-            if is_punc(stop):
+        self.skip_punc(start)
+        while not self.input.eof():
+            if self.is_punc(stop):
                 break
 
             if first:
                 first = False
             else:
-                skip_punc(separator)
+                self.skip_punc(separator)
 
-            if is_punc(stop):
+            if self.is_punc(stop):
                 break
 
             a.append(parser())
 
-        skip_punc(stop)
+        self.skip_punc(stop)
 
         return a
 
-    def parse_call(func):
-        return { 'type': 'call', 'func': func, 'args': delimited('(', ')', ',', parse_expression) }
+    def parse_call(self, func):
+        return { 'type': 'call', 'func': func, 'args': self.delimited('(', ')', ',', self.parse_expression) }
 
-    def parse_varname():
-        name = input.next()
+    def parse_varname(self):
+        name = self.input.next()
         if name['type'] != 'var':
-            input.exit('Expecting variable name')
+            self.input.exit('Expecting variable name')
 
         return name['value']
 
@@ -93,113 +95,117 @@ def parse(input):
     def parse_bool():
         pass
 
-    def maybe_call(expr):
+    def maybe_call(self, expr):
         expr = expr()
-        return parse_call(expr) if is_punc('(') else expr
+        return self.parse_call(expr) if self.is_punc('(') else expr
 
-    def parse_atom():
+    def parse_atom(self):
         def inner_atom():
-            if is_punc('('):
-                input.next()
-                exp = parse_expression()
-                skip_punc(')')
+            if self.is_punc('('):
+                self.input.next()
+                exp = self.parse_expression()
+                self.skip_punc(')')
                 return exp
 
-            if is_punc('{'):
-                return parse_prog()
+            if self.is_punc('{'):
+                return self.parse_prog()
 
             # TODO other things
 
-            token = input.next()
+            token = self.input.next()
             if token['type'] == 'var' or token['type'] == 'num' or token['type'] == 'str':
                 return token
 
-            unexpected()
+            self.unexpected()
                 
-        return maybe_call(inner_atom)
+        return self.maybe_call(inner_atom)
 
-    def parse_toplevel():
+    def parse_toplevel(self):
         prog = []
-        while not input.eof():
-            prog.append(parse_expression())
-            if not input.eof():
-                skip_punc(';')
+        while not self.input.eof():
+            prog.append(self.parse_expression())
+            if not self.input.eof():
+                self.skip_punc(';')
 
         return { "type": "prog", "prog": prog }
 
-    def parse_prog():
-        prog = delimited('{', '}', ';', parse_expression)
+    def parse_prog(self):
+        prog = self.delimited('{', '}', ';', self.parse_expression)
         if len(prog) == 0:
             return FALSE
         if len(prog) == 1:
             return prog[0]
         return { 'type': 'prog', 'prog': prog }
 
-    def parse_expression():
+    def parse_expression(self):
         def inner_expr():
-            return maybe_binary(parse_atom(), 0)
-        return maybe_call(maybe_binary(inner_expr))
+            return self.maybe_binary(self.parse_atom(), 0)
+
+        return self.maybe_call(inner_expr)
         
-    return parse_toplevel()
+    def parse(self):
+        return self.parse_toplevel()
+    
+class InputStream:
+    def __init__(self, string):
+        self.pos = 0
+        self.line = 1
+        self.col = 0
+        self.string = string
 
-def input_stream(string):
-    pos = 0
-    line = 1
-    col = 0
-
-    def next():
-        pos+=1
-        ch = string[pos]
+    def next(self):
+        ch = self.string[self.pos]
+        self.pos+=1
         if ch == "\n":
-            line += 1
-            col = 0
+            self.line += 1
+            self.col = 0
         else:
-            col += 1
+            self.col += 1
         return ch
 
-    def peek():
-        return string[pos]
+    def peek(self):
+        return self.string[self.pos]
 
-    def eof():
-        return pos >= len(string)
+    def eof(self):
+        return self.pos >= len(self.string)
         
     def exit(msg):
-        raise SyntaxError(msg + " (" + line + ":" + col + ")")
+        raise SyntaxError(msg + " (" + self.line + ":" + self.col + ")")
 
-def tokenize(input):
-    current = None
-    keywords = ["meas", "new", "let", "if", "then", "else", "in"]
+class Tokenizer: 
+    def __init__(self, input):
+        self.current = None
+        self.keywords = ["meas", "new", "let", "if", "then", "else", "in"]
+        self.input = input
 
-    def is_keyword(x):
-        return x in keywords
+    def is_keyword(self, x):
+        return x in self.keywords
 
-    def is_digit(ch):
+    def is_digit(self, ch):
         return ch in '0123456789'
 
-    def is_id_start(ch):
+    def is_id_start(self, ch):
         return ch in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
-    def is_id(ch):
-        return is_id_start(ch)
+    def is_id(self, ch):
+        return self.is_id_start(ch)
 
-    def is_op_char(ch):
+    def is_op_char(self, ch):
         return ch in "*="
 
-    def is_punc(ch):
+    def is_punc(self, ch):
         return ch in '.;(){}' 
 
-    def is_whitespace(ch):
+    def is_whitespace(self, ch):
         return ch in ' \t\n' 
 
-    def read_while(predicate):
+    def read_while(self, predicate):
         str = []
-        while (not input.eof()) and predicate(input.peek()):
-            str.append(input.next())
+        while (not self.input.eof()) and predicate(self.input.peek()):
+            str.append(self.input.next())
         return ''.join(str)
 
-    def read_number():
-        has_dot = False
-        number = read_while(valid_num)
+    def read_number(self):
 
         def valid_num(ch):
             if ch == '.':
@@ -209,49 +215,52 @@ def tokenize(input):
                 has_dot = True
                 return True
 
-            return is_digit(ch)
+            return self.is_digit(ch)
 
-        return { "type": "num", "value": parseFloat(number) }
+        has_dot = False
+        number = self.read_while(valid_num)
 
-    def read_ident(): 
-        id = read_while(is_id)
-        return  { "type": "kw" if is_keyword(id) else "var", "value": id }
+        return { "type": "num", "value": float(number) }
 
-    def read_next():
-        read_while(is_whitespace)
-        if(input.eof()):
+    def read_ident(self): 
+        id = self.read_while(self.is_id)
+        return  { "type": "kw" if self.is_keyword(id) else "var", "value": id }
+
+    def read_next(self):
+        self.read_while(self.is_whitespace)
+        if(self.input.eof()):
             return None
 
-        ch = input.peek()
-        if is_digit(ch):
-            return read_number()
-        if is_ident(ch):
-            return read_ident()
-        if is_punc(ch):
-            return { "type": "punc", "value": input.next() }
-        if is_op_char(char):
-            return { "type": "op", "value": read_while(is_op_char) }
+        ch = self.input.peek()
+        if self.is_digit(ch):
+            return self.read_number()
+        if self.is_id_start(ch):
+            return self.read_ident()
+        if self.is_punc(ch):
+            return { "type": "punc", "value": self.input.next() }
+        if self.is_op_char(char):
+            return { "type": "op", "value": self.read_while(self.is_op_char) }
 
-        input.exit("Can't handle char: " + ch)
+        self.input.exit("Can't handle char: " + ch)
 
-    def peek():
-        if current:
-            return current
-        current = read_next()
-        return current
+    def peek(self):
+        if self.current:
+            return self.current
+        self.current = self.read_next()
+        return self.current
 
-    def next():
-        token = current
-        current = None
-        return token or read_next()
+    def next(self):
+        token = self.current
+        self.current = None
+        return token or self.read_next()
 
-    def eof():
-        return peek() is None
-
-    return collections.namedtuple('tokenize', ['next', 'peek', 'eof', 'exit'])(next, peek, eof, exit)
+    def eof(self):
+        return self.peek() is None
 
 def qpl_eval(string):
-    ast = parse(tokenize(input_stream(string)))
+    p = Parser(Tokenizer(InputStream(string)))
+    ast = p.parse()
+
     return ast
 
 def repl():
