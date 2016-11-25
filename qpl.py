@@ -1,5 +1,146 @@
-def parse(tokens):
-    pass
+import collections 
+
+def parse(input):
+    FALSE = { "type": "bool", "value": False }
+    # TODO precedence
+
+    def is_punc(ch):
+        token = input.peek()
+        return token and token['type'] == 'punc' and ( (not ch) or  token['value'] == ch) and token
+
+    def is_kw(kw):
+        token = input.peek()
+        return token and token['type'] == 'punc' and ( (not kw) or  token['value'] == kw) and token
+
+    def is_op(op):
+        token = input.peek()
+        return token and token['type'] == 'punc' and ( (not op) or  token['value'] == op) and token
+
+    def skip_punc(ch):
+        if is_punc(ch):
+            input.next()
+        else:
+            input.exit("Expecting punctuation: " + ch)
+
+    def skip_kw(kw):
+        if is_kw(kw):
+            input.next()
+        else:
+            input.exit("Expecting keyword: " + kw)
+
+    def skip_op(op):
+        if is_op(op):
+            input.next()
+        else:
+            input.exit("Expecting operator: " + op)
+
+    def unexpected():
+        input.exit("Unexpected token: " + input.peek())
+
+    def maybe_binary(left, my_prec):
+        # TODO pretty sure this is gonna break...
+        token = is_op()
+        if token:
+            his_prec = PRECEDENCE[token['value']]
+            if his_prec > my_prec:
+                input.next()
+                right = maybe_binary(parse_atom(), his_prec)
+                binary = { 'type': 'assign' if token['value'] == '=' else 'binary',
+                            'operator': token['value'],
+                            'left': left,
+                            'right': right
+                }
+
+                return maybe_binary(binary, my_prec)
+
+        return left
+
+    def delimited(start, stop, separator, parser):
+        a = []
+        first = True
+        skip_punc(start)
+        while not input.eof():
+            if is_punc(stop):
+                break
+
+            if first:
+                first = False
+            else:
+                skip_punc(separator)
+
+            if is_punc(stop):
+                break
+
+            a.append(parser())
+
+        skip_punc(stop)
+
+        return a
+
+    def parse_call(func):
+        return { 'type': 'call', 'func': func, 'args': delimited('(', ')', ',', parse_expression) }
+
+    def parse_varname():
+        name = input.next()
+        if name['type'] != 'var':
+            input.exit('Expecting variable name')
+
+        return name['value']
+
+    def parse_if():
+        pass
+
+    def parse_bool():
+        pass
+
+    def maybe_call(expr):
+        expr = expr()
+        return parse_call(expr) if is_punc('(') else expr
+
+    def parse_atom():
+        def inner_atom():
+            if is_punc('('):
+                input.next()
+                exp = parse_expression()
+                skip_punc(')')
+                return exp
+
+            if is_punc('{'):
+                return parse_prog()
+
+            # TODO other things
+
+            token = input.next()
+            if token['type'] == 'var' or token['type'] == 'num' or token['type'] == 'str':
+                return token
+
+            unexpected()
+                
+        return maybe_call(inner_atom)
+
+    def parse_toplevel():
+        prog = []
+        while not input.eof():
+            prog.append(parse_expression())
+            if not input.eof():
+                skip_punc(';')
+
+        return { "type": "prog", "prog": prog }
+
+    def parse_prog():
+        prog = delimited('{', '}', ';', parse_expression)
+        if len(prog) == 0:
+            return FALSE
+        if len(prog) == 1:
+            return prog[0]
+        return { 'type': 'prog', 'prog': prog }
+
+    def parse_expression():
+        def inner_expr():
+            return maybe_binary(parse_atom(), 0)
+        return maybe_call(maybe_binary(inner_expr))
+        
+    return parse_toplevel()
 
 def input_stream(string):
     pos = 0
@@ -45,7 +186,7 @@ def tokenize(input):
         return ch in "*="
 
     def is_punc(ch):
-        return ch in '.(){}' 
+        return ch in '.;(){}' 
 
     def is_whitespace(ch):
         return ch in ' \t\n' 
@@ -107,8 +248,10 @@ def tokenize(input):
     def eof():
         return peek() is None
 
+    return collections.namedtuple('tokenize', ['next', 'peek', 'eof', 'exit'])(next, peek, eof, exit)
+
 def qpl_eval(string):
-    ast = tokenize(input_stream(string))
+    ast = parse(tokenize(input_stream(string)))
     return ast
 
 def repl():
