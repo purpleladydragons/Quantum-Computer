@@ -1,10 +1,11 @@
+import pprint
 import collections 
 
 FALSE = { "type": "bool", "value": False }
+PRECEDENCE = { '=':1, '||':2, '&&':3 }
 class Parser:
     def __init__(self, input):
         self.input = input
-        # TODO precedence
 
     def is_punc(self, ch):
         token = self.input.peek()
@@ -12,11 +13,11 @@ class Parser:
 
     def is_kw(self, kw):
         token = self.input.peek()
-        return token and token['type'] == 'punc' and ( (not kw) or  token['value'] == kw) and token
+        return token and token['type'] == 'kw' and ( (not kw) or  token['value'] == kw) and token
 
     def is_op(self, op):
         token = self.input.peek()
-        return token and token['type'] == 'punc' and ( (not op) or  token['value'] == op) and token
+        return token and token['type'] == 'op' and ( (not op) or  token['value'] == op) and token
 
     def skip_punc(self, ch):
         if self.is_punc(ch):
@@ -37,11 +38,11 @@ class Parser:
             self.input.exit("Expecting operator: " + op)
 
     def unexpected(self):
-        self.input.exit("Unexpected token: " + input.peek())
+        self.input.exit("Unexpected token: " + str(self.input.peek()))
 
     def maybe_binary(self, left, my_prec):
-        # TODO pretty sure this is gonna break...
-        token = self.is_op(left)
+        # TODO check this should be none
+        token = self.is_op(None)
         if token:
             his_prec = PRECEDENCE[token['value']]
             if his_prec > my_prec:
@@ -169,14 +170,15 @@ class InputStream:
     def eof(self):
         return self.pos >= len(self.string)
         
-    def exit(msg):
-        raise SyntaxError(msg + " (" + self.line + ":" + self.col + ")")
+    def exit(self, msg):
+        raise SyntaxError(msg + " (" + str(self.line) + ":" + str(self.col) + ")")
 
 class Tokenizer: 
     def __init__(self, input):
         self.current = None
-        self.keywords = ["meas", "new", "let", "if", "then", "else", "in"]
+        self.keywords = ["new", "let", "if", "then", "else", "in"]
         self.input = input
+        self.num_has_dot = False
 
     def is_keyword(self, x):
         return x in self.keywords
@@ -194,7 +196,7 @@ class Tokenizer:
         return ch in "*="
 
     def is_punc(self, ch):
-        return ch in '.;(){}' 
+        return ch in '.;(){}[]' 
 
     def is_whitespace(self, ch):
         return ch in ' \t\n' 
@@ -206,18 +208,17 @@ class Tokenizer:
         return ''.join(str)
 
     def read_number(self):
-
+        self.num_has_dot = False
         def valid_num(ch):
             if ch == '.':
-                if has_dot:
+                if self.num_has_dot:
                     return False
 
-                has_dot = True
+                self.num_has_dot = True
                 return True
 
             return self.is_digit(ch)
 
-        has_dot = False
         number = self.read_while(valid_num)
 
         return { "type": "num", "value": float(number) }
@@ -238,7 +239,7 @@ class Tokenizer:
             return self.read_ident()
         if self.is_punc(ch):
             return { "type": "punc", "value": self.input.next() }
-        if self.is_op_char(char):
+        if self.is_op_char(ch):
             return { "type": "op", "value": self.read_while(self.is_op_char) }
 
         self.input.exit("Can't handle char: " + ch)
@@ -257,15 +258,21 @@ class Tokenizer:
     def eof(self):
         return self.peek() is None
 
+    def exit(self, msg):
+        return self.input.exit(msg)
+
 def qpl_eval(string):
     p = Parser(Tokenizer(InputStream(string)))
     ast = p.parse()
 
     return ast
 
+
+
 def repl():
+    pp = pprint.PrettyPrinter(indent=4)
     while True:
         inp = raw_input(">>> ")
-        print qpl_eval(inp)
+        pp.pprint(qpl_eval(inp))
 
 repl()
